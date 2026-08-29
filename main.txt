@@ -1,0 +1,2 @@
+my api chiqadi id, username, role keladi
+superadmin faqat admin qushadi <add/admin> 

@@ -1,0 +1,5 @@
+venv/
+.env
+santexnika.db
+__pycache__/
+.vscode/
