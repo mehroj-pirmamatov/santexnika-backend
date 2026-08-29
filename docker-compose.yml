@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   # ---------------------------------------------------------
-  # 1. FastAPI Backend Service (Gunicorn + Uvicorn Workers)
+  # 1. FastAPI Backend Service (Bound to localhost:8000 for Host Nginx Proxy)
   # ---------------------------------------------------------
   backend:
     build:
@@ -13,14 +13,14 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql://santex_user:santex_secret_pass@db:5432/santexnika_db}
-      - SECRET_KEY=${SECRET_KEY}
+      - DATABASE_URL=${DATABASE_URL:?Error: DATABASE_URL is required in .env}
+      - SECRET_KEY=${SECRET_KEY:?Error: SECRET_KEY is required in .env}
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    ports:
+      - "127.0.0.1:8000:8000"
     volumes:
       - static_data:/app/static
       - sqlite_data:/app/data
-    ports:
-      - "8000:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/"]
       interval: 15s
@@ -32,48 +32,24 @@ services:
         condition: service_healthy
 
   # ---------------------------------------------------------
-  # 2. PostgreSQL Database Service (Production tavsiya etiladi)
+  # 2. PostgreSQL Database Service (Internal network only)
   # ---------------------------------------------------------
   db:
     image: postgres:16-alpine
     container_name: santexnika_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-santex_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-santex_secret_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-santexnika_db}
+      POSTGRES_USER: ${POSTGRES_USER:?Error: POSTGRES_USER is required in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Error: POSTGRES_PASSWORD is required in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Error: POSTGRES_DB is required in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-santex_user} -d $${POSTGRES_DB:-santexnika_db}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 5s
-
-  # ---------------------------------------------------------
-  # 3. Nginx Reverse Proxy Service
-  # ---------------------------------------------------------
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: santexnika_nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - static_data:/usr/share/nginx/html/static:ro
-    depends_on:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 3
 
 volumes:
   postgres_data:

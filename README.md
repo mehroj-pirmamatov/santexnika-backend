@@ -13,6 +13,8 @@ Santexnika mahsulotlari do'koni uchun FastAPI + SQLModel + SQLite/PostgreSQL aso
 ## Ishga tushirish (Production Deployment)
 
 Barcha batafsil ko'rsatmalar, Docker, PostgreSQL vs SQLite variantlari hamda SSL sertifikat sozlamalari [DEPLOY.md](./DEPLOY.md) faylida keltirilgan.
+Xavfsizlik sozlamalari va parollarni yangilash yo'riqnomasi [SECURITY_FIX.md](./SECURITY_FIX.md) faylida keltirilgan.
+
 
 ### Tezkor ishga tushirish:
 ```bash

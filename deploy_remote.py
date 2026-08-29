@@ -1,16 +1,27 @@
 #!/usr/bin/env python3
-import subprocess
+"""
+Secure Remote Deployment Script for Santexnika Backend.
+
+This script deploys the application to a remote Linux server using SSH Key authentication.
+NO IP ADDRESSES, PASSWORDS, OR API KEYS ARE HARDCODED IN THIS SCRIPT.
+
+Usage:
+  SERVER_IP="x.x.x.x" SERVER_USER="root" python3 deploy_remote.py
+"""
+
 import os
 import sys
+import subprocess
 
-REPO_URL = "https://github.com/mehroj-pirmamatov/santexnika-backend"
-SERVER_IP = "169.58.252.104"
-SERVER_PASS = "qArshi2020i"
-SERVER_USER = "root"
-DOMAIN = "santexnika-loyha.duckdns.org"
+# Read configuration from environment variables
+SERVER_IP = os.environ.get("SERVER_IP")
+SERVER_USER = os.environ.get("SERVER_USER", "root")
+SSH_KEY_PATH = os.environ.get("SSH_KEY_PATH", "")
+REPO_URL = os.environ.get("REPO_URL", "https://github.com/mehroj-pirmamatov/santexnika-backend.git")
+REMOTE_PATH = os.environ.get("REMOTE_PATH", "/root/santexnika-backend")
 
-def run(cmd, check=True):
-    print(f"==> Running: {cmd}")
+def run_local(cmd, check=True):
+    print(f"==> Local Exec: {cmd}")
     res = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if res.returncode != 0 and check:
         print(f"Error executing command: {res.stderr}")
@@ -18,78 +29,64 @@ def run(cmd, check=True):
     return res.stdout.strip()
 
 def main():
-    print("--- 1. Git status & push ---")
-    run("git add .")
-    res = subprocess.run("git commit -m 'Setup Docker, Nginx, PostgreSQL deployment and SSL domain'", shell=True, capture_output=True, text=True)
-    
-    # Check remote
-    remotes = run("git remote -v", check=False)
-    if REPO_URL not in remotes:
-        run(f"git remote add origin {REPO_URL}", check=False)
-    
-    print("Pushing to GitHub...")
-    run("git push -u origin main || git push -u origin master", check=False)
+    if not SERVER_IP:
+        print("Error: SERVER_IP environment variable is not set.")
+        print("Example usage: SERVER_IP='1.2.3.4' SERVER_USER='root' python3 deploy_remote.py")
+        sys.exit(1)
 
-    print("\n--- 2. Connecting to remote server and deploying ---")
-    ssh_cmd = f"sshpass -p '{SERVER_PASS}' ssh -o StrictHostKeyChecking=no {SERVER_USER}@{SERVER_IP}"
-    
+    ssh_opts = "-o StrictHostKeyChecking=no"
+    if SSH_KEY_PATH:
+        ssh_opts += f" -i {SSH_KEY_PATH}"
+
+    ssh_target = f"{SERVER_USER}@{SERVER_IP}"
+
+    print("--- 1. Checking Git Status & Pushing to Remote ---")
+    run_local("git add .")
+    subprocess.run("git commit -m 'Apply security hardening and refactor add-admin endpoint'", shell=True, capture_output=True)
+    run_local("git push origin main || git push origin master", check=False)
+
+    print(f"\n--- 2. Transferring local .env to remote server ({ssh_target}) ---")
+    if os.path.exists(".env"):
+        scp_cmd = f"scp {ssh_opts} .env {ssh_target}:{REMOTE_PATH}/.env"
+        run_local(f"ssh {ssh_opts} {ssh_target} 'mkdir -p {REMOTE_PATH}'")
+        run_local(scp_cmd)
+        print("Successfully uploaded local .env to server via SCP.")
+    else:
+        print("Warning: Local .env file not found. Ensure .env exists on remote server.")
+
+    print(f"\n--- 3. Executing Remote Deployment over SSH ---")
     remote_script = f"""
 set -e
-echo "Updating package list & installing docker, git, certbot if needed..."
-apt-get update -y
-apt-get install -y git docker.0 docker-compose certbot python3-certbot-nginx || apt-get install -y git docker.io docker-compose-plugin certbot python3-certbot-nginx
-
-# Enable and start Docker
-systemctl enable docker || true
-systemctl start docker || true
-
-# Clone or pull repository
-if [ ! -d "/root/santexnika-backend" ]; then
-    git clone {REPO_URL} /root/santexnika-backend
+echo "Updating remote code repository..."
+if [ ! -d "{REMOTE_PATH}" ]; then
+    git clone {REPO_URL} {REMOTE_PATH}
 else
-    cd /root/santexnika-backend
+    cd {REMOTE_PATH}
     git fetch --all
     git reset --hard origin/main || git reset --hard origin/master
 fi
 
-cd /root/santexnika-backend
+cd {REMOTE_PATH}
 
-# Prepare .env file
-cat << 'EOF' > .env
-SECRET_KEY=9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f
-DATABASE_URL=postgresql://santex_user:santex_secret_pass@db:5432/santexnika_db
-POSTGRES_USER=santex_user
-POSTGRES_PASSWORD=santex_secret_pass
-POSTGRES_DB=santexnika_db
-CORS_ORIGINS=*
-GUNICORN_WORKERS=4
-EOF
+# Ensure docker & docker compose plugin are present
+if ! command -v docker >/dev/null 2>&1; then
+    apt-get update -qq && apt-get install -y docker.io docker-compose-v2 certbot python3-certbot-nginx
+    systemctl enable --now docker
+fi
 
-# Ensure docker-compose is available
 COMPOSE_BIN="docker compose"
 if ! docker compose version >/dev/null 2>&1; then
     COMPOSE_BIN="docker-compose"
 fi
 
-# Stop existing containers if running
-$COMPOSE_BIN down || true
-
-# Build and start services
+echo "Building and restarting Docker Compose containers..."
 $COMPOSE_BIN up -d --build
 
-echo "Waiting for services to start..."
-sleep 10
-
-# Obtain & configure SSL certificate with Certbot
-echo "Setting up SSL certificate for {DOMAIN}..."
-certbot --nginx -d {DOMAIN} --non-interactive --agree-tos -m admin@{DOMAIN} --redirect || echo "Certbot failed or domain not pointing to IP yet."
-
-echo "Deployment complete! App is running at https://{DOMAIN}"
+echo "Deployment finished successfully!"
 """
 
-    deploy_command = f"{ssh_cmd} '{remote_script}'"
-    print("Executing remote deployment on server...")
-    subprocess.run(deploy_command, shell=True)
+    ssh_exec_cmd = f"ssh {ssh_opts} {ssh_target} '{remote_script}'"
+    subprocess.run(ssh_exec_cmd, shell=True)
 
 if __name__ == "__main__":
     main()

@@ -173,4 +173,6 @@ class UserWithStats(BaseModel):
 
 
 class AddAdminRequest(BaseModel):
-    phone_number: str
+    phone_number: str = Field(..., min_length=9, max_length=20)
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6, max_length=72)
