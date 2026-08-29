@@ -1,10 +1,8 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from app.database import create_db_and_tables
-from app.routers import categories, products
-from app.routers import categories, products, orders
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import categories, products, orders, auth,users
+from app.database import create_db_and_tables
+from app.routers import categories, products, orders, auth, users
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -12,11 +10,10 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="A1 Santexnika API", lifespan=lifespan)
+app.include_router(auth.router)
 app.include_router(categories.router)
 app.include_router(products.router)
 app.include_router(orders.router)
-app.include_router(auth.router)
-app.include_router(auth.router)
 app.include_router(users.router)
 
 import os
@@ -26,12 +23,12 @@ from fastapi.staticfiles import StaticFiles
 os.makedirs("static/uploads", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:5173",
-]
+from app.config import settings
+
+if settings.cors_origins.strip() == "*":
+    origins = ["*"]
+else:
+    origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,6 +37,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 
 @app.get("/")

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, select
+from decimal import Decimal
 from app.database import get_session
 from app.models import Order, OrderItem, Product, User
 from app.schemas import OrderCreate, OrderRead, OrderStatusUpdate
@@ -9,7 +10,7 @@ router = APIRouter(prefix="/orders", tags=["Orders"])
 admin_only = require_role("admin", "superadmin")
 
 
-def calculate_item_price(product: Product, quantity: int) -> float:
+def calculate_item_price(product: Product, quantity: int) -> Decimal:
     if product.wholesale_min_qty and product.wholesale_price and quantity >= product.wholesale_min_qty:
         return product.wholesale_price
     if product.discount_price:
@@ -31,7 +32,7 @@ def create_order(
         payment_method=data.payment_method,
     )
 
-    total = 0.0
+    total = Decimal(0)
     order_items = []
     for item in data.items:
         product = session.get(Product, item.product_id)
